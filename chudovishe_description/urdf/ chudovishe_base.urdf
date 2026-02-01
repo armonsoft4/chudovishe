@@ -1,0 +1,134 @@
+<?xml version="1.0"?>
+<robot name="chudovishe">
+  <!-- Основа робота (цилиндр): высота 75 мм, диаметр 330 мм  -->
+  <!-- В URDF размеры в метрах: высота 0.075, радиус 0.165 -->
+  <link name="odom"/>
+
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.165" length="0.075"/>
+      </geometry>
+      <material name="white">
+        <color rgba="1 1 1 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="base_link_to_odom" type="fixed">
+    <parent link="odom"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- IMU (navX-Micro): по центру основания, под крышкой -->
+  <!-- Требование: верх IMU на 5 мм ниже верхней грани основания -->
+  <!-- Геометрия IMU (условно): 40x40x2 мм => 0.04x0.04x0.002 м -->
+  <link name="imu_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.04 0.04 0.002"/>
+      </geometry>
+      <material name="gray">
+        <color rgba="0.5 0.5 0.5 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="imu_to_base_link" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <!-- z = base_top - 0.005 - imu_height/2 -->
+    <origin xyz="0 0 0.0315" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Камера глубины: Kinect (Xbox 360), смотрит вперёд (ось +X) -->
+  <!-- Размеры по замеру: длина ~11", высота ~3", глубина ~3" (iFixit) -->
+  <!-- В метрах: ширина(Y)=0.2794, глубина(X)=0.0762, высота(Z)=0.0762 -->
+  <!-- Требование: расстояние от края основания до центра Kinect = 13.5 мм -->
+  <link name="camera_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.06 0.28 0.073"/>
+      </geometry>
+      <material name="black">
+        <color rgba="0 0 0 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="camera_to_base" type="fixed">
+    <parent link="base_link"/>
+    <child link="camera_link"/>
+    <!-- x = base_radius - 0.0135 (т.е. 13.5 мм от переднего края внутрь), z = на верхней грани основания -->
+    <origin xyz="-0.06 0 0.0756" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Левое колесо: диаметр 65 мм (радиус 32.5 мм), толщина 17 мм -->
+  <link name="left_wheel">
+    <visual>
+      <!-- Поворачиваем цилиндр так, чтобы ось цилиндра (толщина колеса) была по Y -->
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="0.0325" length="0.017"/>
+      </geometry>
+      <material name="black">
+        <color rgba="0 0 0 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="left_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="left_wheel"/>
+    <!-- Расстояние между центрами колес: 219 мм => y = ±0.1095; колёса по центру по оси X -->
+    <!-- Колесо выходит из основания вниз на 10 мм -->
+    <origin xyz="0 0.1095 -0.015" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+  </joint>
+
+  <!-- Правое колесо: диаметр 65 мм (радиус 32.5 мм), толщина 17 мм -->
+  <link name="right_wheel">
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="0.0325" length="0.017"/>
+      </geometry>
+      <material name="black">
+        <color rgba="0 0 0 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="right_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="right_wheel"/>
+    <origin xyz="0 -0.1095 -0.015" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+  </joint>
+
+  <!-- Ведущее/опорное колесо (сфера): радиус 35 мм -->
+  <!-- Требование: сфера выходит из основания вниз на 10 мм -->
+  <link name="caster_ball">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.035"/>
+      </geometry>
+      <material name="black">
+        <color rgba="0 0 0 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="caster_ball_to_base" type="fixed">
+    <parent link="base_link"/>
+    <child link="caster_ball"/>
+    <!-- По умолчанию поставил сзади (x < 0). Если нужно — можно сдвинуть по X. -->
+    <origin xyz="-0.12 0 -0.0125" rpy="0 0 0"/>
+  </joint>
+
+</robot>
