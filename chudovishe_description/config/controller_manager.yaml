@@ -1,18 +1,36 @@
 controller_manager:
   ros__parameters:
-    update_rate: 30
+    update_rate: 30  # Hz
 
-    diff_drive_controller:
+    # ОБЯЗАТЕЛЬНО: объявляем типы контроллеров (controller_name.type)
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    chudovishe_base_controller:
       type: diff_drive_controller/DiffDriveController
 
-diff_drive_controller:
+# Параметры diff_drive_controller
+chudovishe_base_controller:
   ros__parameters:
+    # имена joints колёс (как в URDF)
     left_wheel_names:  ["left_wheel_joint"]
     right_wheel_names: ["right_wheel_joint"]
 
-    wheel_separation: 0.219
-    wheel_radius: 0.0325
+    # геометрия (в метрах)
+    wheel_separation: 0.219     # расстояние между центрами колёс
+    wheel_radius: 0.0325        # 65 мм диаметр => 32.5 мм радиус
 
-    # по умолчанию odom берётся по position feedback, мы его отдаём
-    position_feedback: true
+    # если в hardware_interface публикуешь только velocity (без position),
+    # включай расчёт одометрии по velocity feedback:
+    position_feedback: false
+
+    # TF/odom
+    odom_frame_id: "odom"
+    base_frame_id: "base_link"
+    enable_odom_tf: true
+
+    # таймаут команд (diff_drive_controller умеет автo-стоп по timeout)
+    cmd_vel_timeout: 0.5
+
+    # частота публикации odom/tf контроллером
     publish_rate: 30.0

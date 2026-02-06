@@ -13,7 +13,7 @@ def generate_launch_description():
 
     use_sim_time=LaunchConfiguration('use_sim_time')
     pkg_path=os.path.join(get_package_share_directory ('chudovishe_description'))
-    urdf_file=os.path.join(pkg_path, 'urdf', 'chudovishe_base.urdf')
+    urdf_file=os.path.join(pkg_path, 'urdf', 'chudovishe_base.urdf.xacro')
     robot_description_config=xacro.process_file(urdf_file).toxml()
 
     params = {'robot_description': robot_description_config, 'use_sim_time': use_sim_time}
@@ -44,7 +44,7 @@ def generate_launch_description():
     robot_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=["hoverboard_base_controller", "-c", "/controller_manager"]
+        arguments=["chudovishe_base_controller", "-c", "/controller_manager"]
     )
 
     return LaunchDescription([

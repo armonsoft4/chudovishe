@@ -1,13 +1,11 @@
-#include "chudovishe_hardware/chudovishe_hardware_interface.hpp"
+#include "chudovishe_hardware/chudovishe_hardware.hpp"
 
 #include <pluginlib/class_list_macros.hpp>
 
 #include <cmath>
-#include <cstdint>
 #include <cstring>
 #include <sstream>
 #include <string>
-#include <utility>
 
 // POSIX serial
 #include <fcntl.h>
@@ -44,7 +42,6 @@ public:
       return false;
     }
 
-    // Raw mode
     cfmakeraw(&tty);
 
     // 8N1
@@ -52,7 +49,7 @@ public:
     tty.c_cflag |= (CLOCAL | CREAD);
     tty.c_cflag &= ~(PARENB | CSTOPB | CRTSCTS);
 
-    // Non-blocking reads controlled via poll()
+    // non-blocking reads; we handle timeouts via poll()
     tty.c_cc[VMIN]  = 0;
     tty.c_cc[VTIME] = 0;
 
@@ -85,6 +82,7 @@ public:
 
   bool writeAll(const std::string & s)
   {
+    RCLCPP_ERROR(logger_, "Serial send: %s", s.c_str());
     if (fd_ < 0) return false;
 
     const char * data = s.c_str();
@@ -94,7 +92,6 @@ public:
       const ssize_t n = ::write(fd_, data, left);
       if (n < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-          // wait a bit
           if (!waitWritable()) return false;
           continue;
         }
@@ -112,7 +109,6 @@ public:
     out.clear();
     if (fd_ < 0) return false;
 
-    // Read until '\n'
     while (true) {
       if (!waitReadable()) {
         RCLCPP_WARN(logger_, "Serial read timeout");
@@ -132,14 +128,58 @@ public:
       if (c == '\n') return true;
 
       out.push_back(c);
-
-      // safety cap
       if (out.size() > 256) {
         RCLCPP_ERROR(logger_, "Serial line too long");
         return false;
       }
     }
   }
+
+  bool tryGetLatestLine(std::string & latest_line)
+{
+  latest_line.clear();
+  if (fd_ < 0) return false;
+
+  // Read all currently available bytes (non-blocking)
+  char buf[256];
+  while (true) {
+    const ssize_t n = ::read(fd_, buf, sizeof(buf));
+    if (n > 0) {
+      rx_buffer_.append(buf, buf + n);
+      continue;
+    }
+    if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      break;  // no more data right now
+    }
+    if (n == 0) break;
+    // real error
+    return false;
+  }
+
+  // Extract complete lines; keep the last one
+  size_t pos = 0;
+  bool got = false;
+  while (true) {
+    const size_t nl = rx_buffer_.find('\n', pos);
+    if (nl == std::string::npos) break;
+
+    std::string line = rx_buffer_.substr(pos, nl - pos);
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (!line.empty()) {
+      latest_line = line;
+      got = true;
+    }
+    pos = nl + 1;
+  }
+
+  if (pos > 0) {
+    rx_buffer_.erase(0, pos);  // drop processed bytes
+  }
+
+  return got;
+}
+
+
 
 private:
   bool baudToSpeed(int baud, speed_t & out)
@@ -174,18 +214,16 @@ private:
 
   int fd_{-1};
   int timeout_ms_{50};
-  rclcpp::Logger logger_{rclcpp::get_logger("serial_port")};
+  std::string rx_buffer_;
+  rclcpp::Logger logger_{rclcpp::get_logger("chudovishe_hardware::serial")};
 };
 
-hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_init(
-  const hardware_interface::HardwareInfo & info)
+hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_init(const hardware_interface::HardwareInfo & info)
 {
-  RCLCPP_INFO(logger_, "On init");
   if (hardware_interface::SystemInterface::on_init(info) != hardware_interface::CallbackReturn::SUCCESS) {
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  // Expect exactly 2 joints (left, right)
   if (info_.joints.size() != 2) {
     RCLCPP_ERROR(logger_, "Expected exactly 2 joints, got %zu", info_.joints.size());
     return hardware_interface::CallbackReturn::ERROR;
@@ -195,7 +233,6 @@ hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_init(
   joint_names_[0] = info_.joints[0].name;
   joint_names_[1] = info_.joints[1].name;
 
-  // Params
   auto getp = [&](const std::string & key, const std::string & def) {
     auto it = info_.hardware_parameters.find(key);
     return (it == info_.hardware_parameters.end()) ? def : it->second;
@@ -219,7 +256,6 @@ std::vector<hardware_interface::StateInterface> DiffDriveArduinoHardware::export
 {
   std::vector<hardware_interface::StateInterface> states;
   states.reserve(4);
-
   for (size_t i = 0; i < 2; ++i) {
     states.emplace_back(joint_names_[i], hardware_interface::HW_IF_POSITION, &pos_[i]);
     states.emplace_back(joint_names_[i], hardware_interface::HW_IF_VELOCITY, &vel_[i]);
@@ -231,7 +267,6 @@ std::vector<hardware_interface::CommandInterface> DiffDriveArduinoHardware::expo
 {
   std::vector<hardware_interface::CommandInterface> cmds;
   cmds.reserve(2);
-
   for (size_t i = 0; i < 2; ++i) {
     cmds.emplace_back(joint_names_[i], hardware_interface::HW_IF_VELOCITY, &cmd_vel_[i]);
   }
@@ -245,11 +280,11 @@ hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_configure(const 
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  // Optional: reset encoders immediately
+  // optional reset
   sendLine("r\n");
-  prev_pos_[0] = prev_pos_[1] = 0.0;
-  pos_[0] = pos_[1] = 0.0;
-  vel_[0] = vel_[1] = 0.0;
+  prev_pos_.assign(2, 0.0);
+  pos_.assign(2, 0.0);
+  vel_.assign(2, 0.0);
 
   RCLCPP_INFO(logger_, "Configured. Serial=%s @ %d", device_.c_str(), baud_rate_);
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -258,7 +293,6 @@ hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_configure(const 
 hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_cleanup(const rclcpp_lifecycle::State &)
 {
   if (serial_) {
-    serial_->closePort();
     serial_.reset();
   }
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -266,16 +300,15 @@ hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_cleanup(const rc
 
 hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_activate(const rclcpp_lifecycle::State &)
 {
-  // Stop motors
   cmd_vel_[0] = 0.0;
   cmd_vel_[1] = 0.0;
   write(rclcpp::Time(0), rclcpp::Duration(0, 0));
 
   if (reset_encoders_on_activate_) {
     sendLine("r\n");
-    prev_pos_[0] = prev_pos_[1] = 0.0;
-    pos_[0] = pos_[1] = 0.0;
-    vel_[0] = vel_[1] = 0.0;
+    prev_pos_.assign(2, 0.0);
+    pos_.assign(2, 0.0);
+    vel_.assign(2, 0.0);
   }
 
   RCLCPP_INFO(logger_, "Activated");
@@ -284,34 +317,43 @@ hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_activate(const r
 
 hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_deactivate(const rclcpp_lifecycle::State &)
 {
-  // Stop motors
   cmd_vel_[0] = 0.0;
   cmd_vel_[1] = 0.0;
   write(rclcpp::Time(0), rclcpp::Duration(0, 0));
-
   RCLCPP_INFO(logger_, "Deactivated");
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::return_type DiffDriveArduinoHardware::read(const rclcpp::Time &, const rclcpp::Duration & period)
+hardware_interface::return_type DiffDriveArduinoHardware::read(
+  const rclcpp::Time &, const rclcpp::Duration & period)
 {
-  // Query encoders: 'e' -> "left right"
-  if (!sendLine("e\n")) return hardware_interface::return_type::ERROR;
-
   std::string line;
-  if (!readLine(line)) return hardware_interface::return_type::ERROR;
+  const bool got = serial_->tryGetLatestLine(line);
 
-  long left_counts = 0;
-  long right_counts = 0;
+  if (!got) {
+    // Нет новых данных — НЕ ошибка, просто оставляем позицию как есть и ставим скорость 0
+    vel_[0] = 0.0;
+    vel_[1] = 0.0;
+    return hardware_interface::return_type::OK;
+  }
 
-  std::istringstream iss(line);
+  // ожидаем: "enc <left> <right>"
+  if (line.rfind("enc ", 0) != 0) {
+    // пришло что-то другое — игнорируем
+    vel_[0] = 0.0;
+    vel_[1] = 0.0;
+    return hardware_interface::return_type::OK;
+  }
+
+  long left_counts = 0, right_counts = 0;
+  std::istringstream iss(line.substr(4));
   if (!(iss >> left_counts >> right_counts)) {
-    RCLCPP_ERROR(logger_, "Bad encoder line: '%s'", line.c_str());
-    return hardware_interface::return_type::ERROR;
+    vel_[0] = 0.0;
+    vel_[1] = 0.0;
+    return hardware_interface::return_type::OK;
   }
 
   const double rad_per_count = TWO_PI / static_cast<double>(enc_counts_per_rev_);
-
   pos_[0] = static_cast<double>(left_counts) * rad_per_count;
   pos_[1] = static_cast<double>(right_counts) * rad_per_count;
 
@@ -327,18 +369,17 @@ hardware_interface::return_type DiffDriveArduinoHardware::read(const rclcpp::Tim
   return hardware_interface::return_type::OK;
 }
 
+
 hardware_interface::return_type DiffDriveArduinoHardware::write(const rclcpp::Time &, const rclcpp::Duration &)
 {
-  // diff_drive_controller writes wheel joint velocity commands (rad/s). :contentReference[oaicite:3]{index=3}
-  auto safe = [&](double v) {
-    if (!std::isfinite(v)) return 0.0;
-    return v;
-  };
+  auto safe = [&](double v) { return std::isfinite(v) ? v : 0.0; };
 
   const double left_rad_s  = safe(cmd_vel_[0]);
   const double right_rad_s = safe(cmd_vel_[1]);
 
-  // Convert rad/s -> ticks/s because Arduino firmware expects ticks per second for 'm'. :contentReference[oaicite:4]{index=4}
+  RCLCPP_INFO(logger_, "Configured. Serial=%f %f", cmd_vel_[0], cmd_vel_[1]);
+
+  // firmware expects ticks/sec for 'm' :contentReference[oaicite:4]{index=4}
   const double ticks_per_rad = static_cast<double>(enc_counts_per_rev_) / TWO_PI;
   const long left_ticks_s  = lround(left_rad_s * ticks_per_rad);
   const long right_ticks_s = lround(right_rad_s * ticks_per_rad);
@@ -362,8 +403,6 @@ bool DiffDriveArduinoHardware::readLine(std::string & out)
   return serial_->readLine(out);
 }
 
-}  // namespace diffdrive_arduino_hardware
+}  // namespace chudovishe_hardware
 
-PLUGINLIB_EXPORT_CLASS(
-  chudovishe_hardware::DiffDriveArduinoHardware,
-  hardware_interface::SystemInterface)
+PLUGINLIB_EXPORT_CLASS(chudovishe_hardware::DiffDriveArduinoHardware, hardware_interface::SystemInterface)

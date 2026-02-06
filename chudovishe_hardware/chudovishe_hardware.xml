@@ -4,6 +4,6 @@
     name="chudovishe_hardware/DiffDriveArduinoHardware"
     type="chudovishe_hardware::DiffDriveArduinoHardware"
     base_class_type="hardware_interface::SystemInterface">
-    <description>Serial hardware interface for Arduino diff-drive (m/e/r protocol)</description>
+    <description>Serial hardware interface for Arduino diff drive (m/e/r protocol)</description>
   </class>
 </library>

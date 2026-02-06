@@ -1,5 +1,5 @@
-#ifndef DIFFDRIVE_ARDUINO_HARDWARE__DIFFDRIVE_ARDUINO_HARDWARE_HPP_
-#define DIFFDRIVE_ARDUINO_HARDWARE__DIFFDRIVE_ARDUINO_HARDWARE_HPP_
+#ifndef CHUDOVISHE_HARDWARE__CHUDOVISHE_HARDWARE_HPP_
+#define CHUDOVISHE_HARDWARE__CHUDOVISHE_HARDWARE_HPP_
 
 #include <hardware_interface/system_interface.hpp>
 #include <hardware_interface/types/hardware_interface_return_values.hpp>
@@ -38,7 +38,7 @@ public:
   hardware_interface::return_type write(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/) override;
 
 private:
-  // Parameters (from <ros2_control><hardware><param ...>)
+  // Params from <ros2_control><hardware><param ...>
   std::string device_;
   int baud_rate_{57600};
   int timeout_ms_{50};
@@ -56,13 +56,13 @@ private:
   // Commands
   std::vector<double> cmd_vel_;  // rad/s
 
-  rclcpp::Logger logger_{rclcpp::get_logger("chudovishe_hardware_interface")};
+  rclcpp::Logger logger_{rclcpp::get_logger("chudovishe_hardware")};
   std::unique_ptr<SerialPort> serial_;
 
   bool sendLine(const std::string & s);
   bool readLine(std::string & out);
 };
 
-}  // namespace diffdrive_arduino_hardware
+}  // namespace chudovishe_hardware
 
-#endif  // DIFFDRIVE_ARDUINO_HARDWARE__DIFFDRIVE_ARDUINO_HARDWARE_HPP_
+#endif  // CHUDOVISHE_HARDWARE__CHUDOVISHE_HARDWARE_HPP_

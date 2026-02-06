@@ -12,7 +12,7 @@ find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 
 add_library(${PROJECT_NAME} SHARED
-  src/chudovishe_hardware_interface.cpp
+  src/chudovishe_hardware.cpp
 )
 target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -29,10 +29,7 @@ ament_target_dependencies(${PROJECT_NAME}
 
 pluginlib_export_plugin_description_file(hardware_interface chudovishe_hardware.xml)
 
-install(
-  DIRECTORY include
-  DESTINATION include
-)
+install(DIRECTORY include DESTINATION include)
 
 install(
   TARGETS ${PROJECT_NAME}
