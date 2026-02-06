@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="chudovishe_ros2_control">
+
+<ros2_control name="ArduinoDiffDrive" type="system">
+  <hardware>
+    <plugin>chudovishe_hardware/DiffDriveArduinoHardware</plugin>
+    <param name="device">/dev/ttyACM0</param>
+    <param name="baud_rate">57600</param>
+    <param name="timeout_ms">50</param>
+    <param name="enc_counts_per_rev">1123</param>
+    <param name="reset_encoders_on_activate">true</param>
+  </hardware>
+
+  <joint name="left_wheel_joint">
+    <command_interface name="velocity"/>
+    <state_interface name="position"/>
+    <state_interface name="velocity"/>
+  </joint>
+
+  <joint name="right_wheel_joint">
+    <command_interface name="velocity"/>
+    <state_interface name="position"/>
+    <state_interface name="velocity"/>
+  </joint>
+</ros2_control>
+
+  </xacro:macro>
+
+</robot>
