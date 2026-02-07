@@ -13,6 +13,9 @@
   <depend>rclcpp_lifecycle</depend>
   <depend>hardware_interface</depend>
   <depend>pluginlib</depend>
+  <depend>serial</depend>
+  <depend>libserial-dev</depend>
+
 
   <export>
     <build_type>ament_cmake</build_type>

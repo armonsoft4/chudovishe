@@ -7,13 +7,20 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 
+
+
 add_library(${PROJECT_NAME} SHARED
-  src/chudovishe_hardware.cpp
+  src/chudovishe_hardware.cpp 
+  src/arduino_comms.cpp
 )
+
+
+
 target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
@@ -22,6 +29,7 @@ target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 
 ament_target_dependencies(${PROJECT_NAME}
   rclcpp
+  rclcpp_components
   rclcpp_lifecycle
   hardware_interface
   pluginlib

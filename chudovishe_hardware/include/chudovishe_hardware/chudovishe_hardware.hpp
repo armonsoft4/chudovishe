@@ -4,6 +4,7 @@
 #include <hardware_interface/system_interface.hpp>
 #include <hardware_interface/types/hardware_interface_return_values.hpp>
 #include <hardware_interface/types/hardware_interface_type_values.hpp>
+#include "chudovishe_hardware/arduino_comms.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/macros.hpp>
@@ -57,7 +58,7 @@ private:
   std::vector<double> cmd_vel_;  // rad/s
 
   rclcpp::Logger logger_{rclcpp::get_logger("chudovishe_hardware")};
-  std::unique_ptr<SerialPort> serial_;
+  std::unique_ptr<ArduinoComms> serial_;
 
   bool sendLine(const std::string & s);
   bool readLine(std::string & out);

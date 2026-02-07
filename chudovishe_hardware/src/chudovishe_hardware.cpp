@@ -1,5 +1,5 @@
 #include "chudovishe_hardware/chudovishe_hardware.hpp"
-
+#include "chudovishe_hardware/arduino_comms.hpp"
 #include <pluginlib/class_list_macros.hpp>
 
 #include <cmath>
@@ -17,206 +17,6 @@ namespace chudovishe_hardware
 {
 
 static constexpr double TWO_PI = 6.2831853071795864769;
-
-class SerialPort
-{
-public:
-  SerialPort() = default;
-  ~SerialPort() { closePort(); }
-
-  bool openPort(const std::string & device, int baud_rate, int timeout_ms, rclcpp::Logger logger)
-  {
-    logger_ = logger;
-    timeout_ms_ = timeout_ms;
-
-    fd_ = ::open(device.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
-    if (fd_ < 0) {
-      RCLCPP_ERROR(logger_, "Failed to open serial device '%s': %s", device.c_str(), strerror(errno));
-      return false;
-    }
-
-    termios tty{};
-    if (tcgetattr(fd_, &tty) != 0) {
-      RCLCPP_ERROR(logger_, "tcgetattr failed: %s", strerror(errno));
-      closePort();
-      return false;
-    }
-
-    cfmakeraw(&tty);
-
-    // 8N1
-    tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;
-    tty.c_cflag |= (CLOCAL | CREAD);
-    tty.c_cflag &= ~(PARENB | CSTOPB | CRTSCTS);
-
-    // non-blocking reads; we handle timeouts via poll()
-    tty.c_cc[VMIN]  = 0;
-    tty.c_cc[VTIME] = 0;
-
-    speed_t speed{};
-    if (!baudToSpeed(baud_rate, speed)) {
-      RCLCPP_ERROR(logger_, "Unsupported baud rate: %d", baud_rate);
-      closePort();
-      return false;
-    }
-    cfsetispeed(&tty, speed);
-    cfsetospeed(&tty, speed);
-
-    if (tcsetattr(fd_, TCSANOW, &tty) != 0) {
-      RCLCPP_ERROR(logger_, "tcsetattr failed: %s", strerror(errno));
-      closePort();
-      return false;
-    }
-
-    tcflush(fd_, TCIOFLUSH);
-    return true;
-  }
-
-  void closePort()
-  {
-    if (fd_ >= 0) {
-      ::close(fd_);
-      fd_ = -1;
-    }
-  }
-
-  bool writeAll(const std::string & s)
-  {
-    RCLCPP_ERROR(logger_, "Serial send: %s", s.c_str());
-    if (fd_ < 0) return false;
-
-    const char * data = s.c_str();
-    size_t left = s.size();
-
-    while (left > 0) {
-      const ssize_t n = ::write(fd_, data, left);
-      if (n < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-          if (!waitWritable()) return false;
-          continue;
-        }
-        RCLCPP_ERROR(logger_, "Serial write failed: %s", strerror(errno));
-        return false;
-      }
-      data += n;
-      left -= static_cast<size_t>(n);
-    }
-    return true;
-  }
-
-  bool readLine(std::string & out)
-  {
-    out.clear();
-    if (fd_ < 0) return false;
-
-    while (true) {
-      if (!waitReadable()) {
-        RCLCPP_WARN(logger_, "Serial read timeout");
-        return false;
-      }
-
-      char c{};
-      const ssize_t n = ::read(fd_, &c, 1);
-      if (n < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) continue;
-        RCLCPP_ERROR(logger_, "Serial read failed: %s", strerror(errno));
-        return false;
-      }
-      if (n == 0) continue;
-
-      if (c == '\r') continue;
-      if (c == '\n') return true;
-
-      out.push_back(c);
-      if (out.size() > 256) {
-        RCLCPP_ERROR(logger_, "Serial line too long");
-        return false;
-      }
-    }
-  }
-
-  bool tryGetLatestLine(std::string & latest_line)
-{
-  latest_line.clear();
-  if (fd_ < 0) return false;
-
-  // Read all currently available bytes (non-blocking)
-  char buf[256];
-  while (true) {
-    const ssize_t n = ::read(fd_, buf, sizeof(buf));
-    if (n > 0) {
-      rx_buffer_.append(buf, buf + n);
-      continue;
-    }
-    if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-      break;  // no more data right now
-    }
-    if (n == 0) break;
-    // real error
-    return false;
-  }
-
-  // Extract complete lines; keep the last one
-  size_t pos = 0;
-  bool got = false;
-  while (true) {
-    const size_t nl = rx_buffer_.find('\n', pos);
-    if (nl == std::string::npos) break;
-
-    std::string line = rx_buffer_.substr(pos, nl - pos);
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (!line.empty()) {
-      latest_line = line;
-      got = true;
-    }
-    pos = nl + 1;
-  }
-
-  if (pos > 0) {
-    rx_buffer_.erase(0, pos);  // drop processed bytes
-  }
-
-  return got;
-}
-
-
-
-private:
-  bool baudToSpeed(int baud, speed_t & out)
-  {
-    switch (baud) {
-      case 9600: out = B9600; return true;
-      case 19200: out = B19200; return true;
-      case 38400: out = B38400; return true;
-      case 57600: out = B57600; return true;
-      case 115200: out = B115200; return true;
-      default: return false;
-    }
-  }
-
-  bool waitReadable()
-  {
-    pollfd pfd{};
-    pfd.fd = fd_;
-    pfd.events = POLLIN;
-    const int r = ::poll(&pfd, 1, timeout_ms_);
-    return r > 0 && (pfd.revents & POLLIN);
-  }
-
-  bool waitWritable()
-  {
-    pollfd pfd{};
-    pfd.fd = fd_;
-    pfd.events = POLLOUT;
-    const int r = ::poll(&pfd, 1, timeout_ms_);
-    return r > 0 && (pfd.revents & POLLOUT);
-  }
-
-  int fd_{-1};
-  int timeout_ms_{50};
-  std::string rx_buffer_;
-  rclcpp::Logger logger_{rclcpp::get_logger("chudovishe_hardware::serial")};
-};
 
 hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_init(const hardware_interface::HardwareInfo & info)
 {
@@ -275,13 +75,13 @@ std::vector<hardware_interface::CommandInterface> DiffDriveArduinoHardware::expo
 
 hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_configure(const rclcpp_lifecycle::State &)
 {
-  serial_ = std::make_unique<SerialPort>();
-  if (!serial_->openPort(device_, baud_rate_, timeout_ms_, logger_)) {
-    return hardware_interface::CallbackReturn::ERROR;
-  }
-
+  serial_ = std::make_unique<ArduinoComms>();
+  // if (!) {
+  //   return hardware_interface::CallbackReturn::ERROR;
+  // }
+  serial_->setup(device_, baud_rate_, timeout_ms_);
   // optional reset
-  sendLine("r\n");
+  serial_->sendMsg("r\n");
   prev_pos_.assign(2, 0.0);
   pos_.assign(2, 0.0);
   vel_.assign(2, 0.0);
@@ -327,31 +127,9 @@ hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_deactivate(const
 hardware_interface::return_type DiffDriveArduinoHardware::read(
   const rclcpp::Time &, const rclcpp::Duration & period)
 {
-  std::string line;
-  const bool got = serial_->tryGetLatestLine(line);
 
-  if (!got) {
-    // Нет новых данных — НЕ ошибка, просто оставляем позицию как есть и ставим скорость 0
-    vel_[0] = 0.0;
-    vel_[1] = 0.0;
-    return hardware_interface::return_type::OK;
-  }
-
-  // ожидаем: "enc <left> <right>"
-  if (line.rfind("enc ", 0) != 0) {
-    // пришло что-то другое — игнорируем
-    vel_[0] = 0.0;
-    vel_[1] = 0.0;
-    return hardware_interface::return_type::OK;
-  }
-
-  long left_counts = 0, right_counts = 0;
-  std::istringstream iss(line.substr(4));
-  if (!(iss >> left_counts >> right_counts)) {
-    vel_[0] = 0.0;
-    vel_[1] = 0.0;
-    return hardware_interface::return_type::OK;
-  }
+  int left_counts = 0, right_counts = 0;
+  serial_->readEncoderValues(left_counts, right_counts);
 
   const double rad_per_count = TWO_PI / static_cast<double>(enc_counts_per_rev_);
   pos_[0] = static_cast<double>(left_counts) * rad_per_count;
@@ -384,23 +162,10 @@ hardware_interface::return_type DiffDriveArduinoHardware::write(const rclcpp::Ti
   const long left_ticks_s  = lround(left_rad_s * ticks_per_rad);
   const long right_ticks_s = lround(right_rad_s * ticks_per_rad);
 
-  std::ostringstream oss;
-  oss << "m " << left_ticks_s << " " << right_ticks_s << "\n";
-  if (!sendLine(oss.str())) return hardware_interface::return_type::ERROR;
+  std::string command = "m " + std::to_string(left_ticks_s) + " " + std::to_string(right_ticks_s) + "\n";
+  serial_->sendMsg(command);
 
   return hardware_interface::return_type::OK;
-}
-
-bool DiffDriveArduinoHardware::sendLine(const std::string & s)
-{
-  if (!serial_) return false;
-  return serial_->writeAll(s);
-}
-
-bool DiffDriveArduinoHardware::readLine(std::string & out)
-{
-  if (!serial_) return false;
-  return serial_->readLine(out);
 }
 
 }  // namespace chudovishe_hardware
