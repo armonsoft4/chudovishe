@@ -17,8 +17,6 @@
 namespace chudovishe_hardware
 {
 
-class SerialPort;
-
 class DiffDriveArduinoHardware : public hardware_interface::SystemInterface
 {
 public:
@@ -59,9 +57,6 @@ private:
 
   rclcpp::Logger logger_{rclcpp::get_logger("chudovishe_hardware")};
   std::unique_ptr<ArduinoComms> serial_;
-
-  bool sendLine(const std::string & s);
-  bool readLine(std::string & out);
 };
 
 }  // namespace chudovishe_hardware

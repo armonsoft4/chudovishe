@@ -11,8 +11,10 @@ find_package(rclcpp_components REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
-
-
+find_package(serial REQUIRED)
+if (serial_FOUND)
+  message("Serial found")
+endif()
 
 add_library(${PROJECT_NAME} SHARED
   src/chudovishe_hardware.cpp 
@@ -33,6 +35,7 @@ ament_target_dependencies(${PROJECT_NAME}
   rclcpp_lifecycle
   hardware_interface
   pluginlib
+  serial
 )
 
 pluginlib_export_plugin_description_file(hardware_interface chudovishe_hardware.xml)

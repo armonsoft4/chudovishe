@@ -105,7 +105,7 @@ hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_activate(const r
   write(rclcpp::Time(0), rclcpp::Duration(0, 0));
 
   if (reset_encoders_on_activate_) {
-    sendLine("r\n");
+    serial_->sendMsg("r\n");
     prev_pos_.assign(2, 0.0);
     pos_.assign(2, 0.0);
     vel_.assign(2, 0.0);
@@ -155,15 +155,12 @@ hardware_interface::return_type DiffDriveArduinoHardware::write(const rclcpp::Ti
   const double left_rad_s  = safe(cmd_vel_[0]);
   const double right_rad_s = safe(cmd_vel_[1]);
 
-  RCLCPP_INFO(logger_, "Configured. Serial=%f %f", cmd_vel_[0], cmd_vel_[1]);
-
   // firmware expects ticks/sec for 'm' :contentReference[oaicite:4]{index=4}
   const double ticks_per_rad = static_cast<double>(enc_counts_per_rev_) / TWO_PI;
   const long left_ticks_s  = lround(left_rad_s * ticks_per_rad);
   const long right_ticks_s = lround(right_rad_s * ticks_per_rad);
 
-  std::string command = "m " + std::to_string(left_ticks_s) + " " + std::to_string(right_ticks_s) + "\n";
-  serial_->sendMsg(command);
+  serial_->setMotorValues(left_ticks_s, right_ticks_s);
 
   return hardware_interface::return_type::OK;
 }
