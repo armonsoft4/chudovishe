@@ -1,6 +1,6 @@
 controller_manager:
   ros__parameters:
-    update_rate: 30  # Hz
+    update_rate: 5  # Hz
 
     # ОБЯЗАТЕЛЬНО: объявляем типы контроллеров (controller_name.type)
     joint_state_broadcaster:
@@ -33,4 +33,4 @@ chudovishe_base_controller:
     cmd_vel_timeout: 0.5
 
     # частота публикации odom/tf контроллером
-    publish_rate: 30.0
+    publish_rate: 5.0
