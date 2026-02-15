@@ -25,7 +25,7 @@ hardware_interface::CallbackReturn ChudovisheSystemHardware::on_init(
         // each joint
         if (joint.command_interfaces.size() != 1) {
           RCLCPP_FATAL(
-                get_logger(),
+                logger_,
                 "Joint '%s' has %zu command interfaces found. 1 expected.",
                 joint.name.c_str(), joint.command_interfaces.size());
             return hardware_interface::CallbackReturn::ERROR;
@@ -34,7 +34,7 @@ hardware_interface::CallbackReturn ChudovisheSystemHardware::on_init(
         if (joint.command_interfaces[0].name !=
             hardware_interface::HW_IF_VELOCITY) {
             RCLCPP_FATAL(
-                get_logger(),
+                logger_,
                 "Joint '%s' have %s command interfaces found. '%s' expected.",
                 joint.name.c_str(), joint.command_interfaces[0].name.c_str(),
                 hardware_interface::HW_IF_VELOCITY);
@@ -42,7 +42,7 @@ hardware_interface::CallbackReturn ChudovisheSystemHardware::on_init(
         }
 
         if (joint.state_interfaces.size() != 2) {
-            RCLCPP_FATAL(get_logger(),
+            RCLCPP_FATAL(logger_,
                          "Joint '%s' has %zu state interface. 2 expected.",
                          joint.name.c_str(), joint.state_interfaces.size());
             return hardware_interface::CallbackReturn::ERROR;
@@ -51,7 +51,7 @@ hardware_interface::CallbackReturn ChudovisheSystemHardware::on_init(
         if (joint.state_interfaces[0].name !=
             hardware_interface::HW_IF_POSITION) {
             RCLCPP_FATAL(
-                get_logger(),
+                logger_,
                 "Joint '%s' have '%s' as first state interface. '%s' expected.",
                 joint.name.c_str(), joint.state_interfaces[0].name.c_str(),
                 hardware_interface::HW_IF_POSITION);
@@ -60,7 +60,7 @@ hardware_interface::CallbackReturn ChudovisheSystemHardware::on_init(
 
         if (joint.state_interfaces[1].name !=
             hardware_interface::HW_IF_VELOCITY) {
-            RCLCPP_FATAL(get_logger(),
+            RCLCPP_FATAL(logger_,
                          "Joint '%s' have '%s' as second state interface. '%s' "
                          "expected.",
                          joint.name.c_str(),
@@ -72,8 +72,6 @@ hardware_interface::CallbackReturn ChudovisheSystemHardware::on_init(
 
     left_wheel_.name = info_.joints[0].name;
     right_wheel_.name = info_.joints[1].name;
-    RCLCPP_INFO(get_logger(), left_wheel_.name.c_str());
-    RCLCPP_INFO(get_logger(), right_wheel_.name.c_str());
     return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -114,7 +112,7 @@ ChudovisheSystemHardware::export_command_interfaces() {
 
 hardware_interface::CallbackReturn ChudovisheSystemHardware::on_configure(
     const rclcpp_lifecycle::State& /*previous_state*/) {
-    RCLCPP_INFO(get_logger(), "Configuring ...please wait...");
+    RCLCPP_INFO(logger_, "Configuring ...please wait...");
 
     // reset values always when configuring hardware
     for (const auto& [name, descr] : joint_state_interfaces_) {
@@ -123,21 +121,21 @@ hardware_interface::CallbackReturn ChudovisheSystemHardware::on_configure(
     for (const auto& [name, descr] : joint_command_interfaces_) {
         set_command(name, 0.0);
     }
-    RCLCPP_INFO(get_logger(), "Successfully configured!");
+    RCLCPP_INFO(logger_, "Successfully configured!");
 
     return hardware_interface::CallbackReturn::SUCCESS;
 }
 
 hardware_interface::CallbackReturn ChudovisheSystemHardware::on_activate(
     const rclcpp_lifecycle::State& /*previous_state*/) {
-    RCLCPP_INFO(get_logger(), "Activating ...please wait...");
+    RCLCPP_INFO(logger_, "Activating ...please wait...");
 
     // command and state should be equal when starting
     for (const auto& [name, descr] : joint_command_interfaces_) {
         set_command(name, get_state(name));
     }
 
-    RCLCPP_INFO(get_logger(), "Successfully activated!");
+    RCLCPP_INFO(logger_, "Successfully activated!");
 
     return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -146,9 +144,9 @@ hardware_interface::CallbackReturn ChudovisheSystemHardware::on_deactivate(
     const rclcpp_lifecycle::State& /*previous_state*/) {
     // BEGIN: This part here is for exemplary purposes - Please do not copy to
     // your production code
-    RCLCPP_INFO(get_logger(), "Deactivating ...please wait...");
+    RCLCPP_INFO(logger_, "Deactivating ...please wait...");
 
-    RCLCPP_INFO(get_logger(), "Successfully deactivated!");
+    RCLCPP_INFO(logger_, "Successfully deactivated!");
 
     return hardware_interface::CallbackReturn::SUCCESS;
 }

@@ -68,8 +68,9 @@ class ChudovisheSystemHardware : public hardware_interface::SystemInterface {
     MotorWheel left_wheel_;
     MotorWheel right_wheel_;
 
+    rclcpp::Logger logger_ = rclcpp::get_logger("chudovishe_system_hardware");
 };
 
 }  // namespace chudovishe_hardware
 
-#endif  // ROS2_CONTROL_DEMO_EXAMPLE_2__DIFFBOT_SYSTEM_HPP_
+#endif  // CHUDOVISHE_HARDWARE__DIFFBOT_SYSTEM_HPP_
