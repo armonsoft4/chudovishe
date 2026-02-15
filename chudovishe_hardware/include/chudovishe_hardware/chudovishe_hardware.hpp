@@ -1,16 +1,3 @@
-// Copyright 2021 ros2_control Development Team
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
 
 #ifndef CHUDOVISHE_HARDWARE__DIFFBOT_SYSTEM_HPP_
 #define CHUDOVISHE_HARDWARE__DIFFBOT_SYSTEM_HPP_
@@ -29,6 +16,7 @@
 #include "rclcpp/time.hpp"
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
 #include "rclcpp_lifecycle/state.hpp"
+#include <serial/serial.h>
 
 #include "chudovishe_hardware/wheel.hpp"
 
@@ -64,9 +52,12 @@ class ChudovisheSystemHardware : public hardware_interface::SystemInterface {
     // Parameters for the DiffBot simulation
     std::string port_name_;
     int baudrate_;
+    int timeout_ms_;
 
     MotorWheel left_wheel_;
     MotorWheel right_wheel_;
+
+    serial::Serial serial_;
 
     rclcpp::Logger logger_ = rclcpp::get_logger("chudovishe_system_hardware");
 };

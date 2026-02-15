@@ -16,15 +16,16 @@
 namespace chudovishe_hardware {
 hardware_interface::CallbackReturn ChudovisheSystemHardware::on_init(
     const hardware_interface::HardwareComponentInterfaceParams& /* params */) {
-      // Reading config file
-      port_name_ = info_.hardware_parameters["port_name"];
-      baudrate_ = std::stoi(info_.hardware_parameters["baudrate"]);
-      
-      for (const hardware_interface::ComponentInfo& joint : info_.joints) {
+    // Reading config file
+    port_name_ = info_.hardware_parameters["port_name"];
+    baudrate_ = std::stoi(info_.hardware_parameters["baudrate"]);
+    timeout_ms_ = std::stoi(info_.hardware_parameters["timeout_ms"]);
+
+    for (const hardware_interface::ComponentInfo& joint : info_.joints) {
         // DiffBotSystem has exactly two states and one command interface on
         // each joint
         if (joint.command_interfaces.size() != 1) {
-          RCLCPP_FATAL(
+            RCLCPP_FATAL(
                 logger_,
                 "Joint '%s' has %zu command interfaces found. 1 expected.",
                 joint.name.c_str(), joint.command_interfaces.size());
@@ -121,6 +122,7 @@ hardware_interface::CallbackReturn ChudovisheSystemHardware::on_configure(
     for (const auto& [name, descr] : joint_command_interfaces_) {
         set_command(name, 0.0);
     }
+
     RCLCPP_INFO(logger_, "Successfully configured!");
 
     return hardware_interface::CallbackReturn::SUCCESS;
@@ -135,6 +137,15 @@ hardware_interface::CallbackReturn ChudovisheSystemHardware::on_activate(
         set_command(name, get_state(name));
     }
 
+    try {
+        serial::Serial serial_ = serial::Serial(
+            port_name_, baudrate_, serial::Timeout::simpleTimeout(timeout_ms_));
+    } catch (const std::exception& e) {
+        RCLCPP_ERROR(logger_, "Failed to open serial port %s: %s",
+                     port_name_.c_str(), e.what());
+        return hardware_interface::CallbackReturn::ERROR;
+    }
+
     RCLCPP_INFO(logger_, "Successfully activated!");
 
     return hardware_interface::CallbackReturn::SUCCESS;
@@ -142,9 +153,15 @@ hardware_interface::CallbackReturn ChudovisheSystemHardware::on_activate(
 
 hardware_interface::CallbackReturn ChudovisheSystemHardware::on_deactivate(
     const rclcpp_lifecycle::State& /*previous_state*/) {
-    // BEGIN: This part here is for exemplary purposes - Please do not copy to
-    // your production code
     RCLCPP_INFO(logger_, "Deactivating ...please wait...");
+
+    try {
+        serial_.close();
+    } catch (const std::exception& e) {
+        RCLCPP_ERROR(logger_, "Failed to close serial port %s: %s",
+                     port_name_.c_str(), e.what());
+        return hardware_interface::CallbackReturn::ERROR;
+    }
 
     RCLCPP_INFO(logger_, "Successfully deactivated!");
 
