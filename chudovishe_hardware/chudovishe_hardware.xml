@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <library path="chudovishe_hardware">
   <class
-    name="chudovishe_hardware/DiffDriveArduinoHardware"
-    type="chudovishe_hardware::DiffDriveArduinoHardware"
+    name="chudovishe_hardware/ChudovisheSystemHardware"
+    type="chudovishe_hardware::ChudovisheSystemHardware"
     base_class_type="hardware_interface::SystemInterface">
     <description>Serial hardware interface for Arduino diff drive (m/e/r protocol)</description>
   </class>

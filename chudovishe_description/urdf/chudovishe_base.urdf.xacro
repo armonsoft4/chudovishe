@@ -132,14 +132,14 @@
   </joint>
 
 
-<ros2_control name="ArduinoDiffDrive" type="system">
+<ros2_control name="ChudovisheSystemHardware" type="system">
   <hardware>
-    <plugin>chudovishe_hardware/DiffDriveArduinoHardware</plugin>
-    <param name="device">/dev/ttyACM0</param>
-    <param name="baud_rate">57600</param>
-    <param name="timeout_ms">5</param>
+    <plugin>chudovishe_hardware/ChudovisheSystemHardware</plugin>
+    <param name="port_name">/dev/ttyACM0</param>
+    <param name="baudrate">57600</param>
+    <!-- <param name="timeout_ms">50</param>
     <param name="enc_counts_per_rev">1123</param>
-    <param name="reset_encoders_on_activate">true</param>
+    <param name="reset_encoders_on_activate">true</param> -->
   </hardware>
 
   <joint name="left_wheel_joint">
@@ -154,5 +154,4 @@
     <state_interface name="velocity"/>
   </joint>
 </ros2_control>
-
 </robot>

@@ -1,170 +1,171 @@
 #include "chudovishe_hardware/chudovishe_hardware.hpp"
-#include "chudovishe_hardware/arduino_comms.hpp"
-#include <pluginlib/class_list_macros.hpp>
 
+#include <chrono>
 #include <cmath>
-#include <cstring>
+#include <cstddef>
+#include <iomanip>
+#include <limits>
+#include <memory>
 #include <sstream>
-#include <string>
+#include <vector>
 
-// POSIX serial
-#include <fcntl.h>
-#include <poll.h>
-#include <termios.h>
-#include <unistd.h>
+#include "hardware_interface/lexical_casts.hpp"
+#include "hardware_interface/types/hardware_interface_type_values.hpp"
+#include "rclcpp/rclcpp.hpp"
 
-namespace chudovishe_hardware
-{
+namespace chudovishe_hardware {
+hardware_interface::CallbackReturn ChudovisheSystemHardware::on_init(
+    const hardware_interface::HardwareComponentInterfaceParams& /* params */) {
+      // Reading config file
+      port_name_ = info_.hardware_parameters["port_name"];
+      baudrate_ = std::stoi(info_.hardware_parameters["baudrate"]);
+      
+      for (const hardware_interface::ComponentInfo& joint : info_.joints) {
+        // DiffBotSystem has exactly two states and one command interface on
+        // each joint
+        if (joint.command_interfaces.size() != 1) {
+          RCLCPP_FATAL(
+                get_logger(),
+                "Joint '%s' has %zu command interfaces found. 1 expected.",
+                joint.name.c_str(), joint.command_interfaces.size());
+            return hardware_interface::CallbackReturn::ERROR;
+        }
 
-static constexpr double TWO_PI = 6.2831853071795864769;
+        if (joint.command_interfaces[0].name !=
+            hardware_interface::HW_IF_VELOCITY) {
+            RCLCPP_FATAL(
+                get_logger(),
+                "Joint '%s' have %s command interfaces found. '%s' expected.",
+                joint.name.c_str(), joint.command_interfaces[0].name.c_str(),
+                hardware_interface::HW_IF_VELOCITY);
+            return hardware_interface::CallbackReturn::ERROR;
+        }
 
-hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_init(const hardware_interface::HardwareInfo & info)
-{
-  if (hardware_interface::SystemInterface::on_init(info) != hardware_interface::CallbackReturn::SUCCESS) {
-    return hardware_interface::CallbackReturn::ERROR;
-  }
+        if (joint.state_interfaces.size() != 2) {
+            RCLCPP_FATAL(get_logger(),
+                         "Joint '%s' has %zu state interface. 2 expected.",
+                         joint.name.c_str(), joint.state_interfaces.size());
+            return hardware_interface::CallbackReturn::ERROR;
+        }
 
-  if (info_.joints.size() != 2) {
-    RCLCPP_ERROR(logger_, "Expected exactly 2 joints, got %zu", info_.joints.size());
-    return hardware_interface::CallbackReturn::ERROR;
-  }
+        if (joint.state_interfaces[0].name !=
+            hardware_interface::HW_IF_POSITION) {
+            RCLCPP_FATAL(
+                get_logger(),
+                "Joint '%s' have '%s' as first state interface. '%s' expected.",
+                joint.name.c_str(), joint.state_interfaces[0].name.c_str(),
+                hardware_interface::HW_IF_POSITION);
+            return hardware_interface::CallbackReturn::ERROR;
+        }
 
-  joint_names_.resize(2);
-  joint_names_[0] = info_.joints[0].name;
-  joint_names_[1] = info_.joints[1].name;
+        if (joint.state_interfaces[1].name !=
+            hardware_interface::HW_IF_VELOCITY) {
+            RCLCPP_FATAL(get_logger(),
+                         "Joint '%s' have '%s' as second state interface. '%s' "
+                         "expected.",
+                         joint.name.c_str(),
+                         joint.state_interfaces[1].name.c_str(),
+                         hardware_interface::HW_IF_VELOCITY);
+            return hardware_interface::CallbackReturn::ERROR;
+        }
+    }
 
-  auto getp = [&](const std::string & key, const std::string & def) {
-    auto it = info_.hardware_parameters.find(key);
-    return (it == info_.hardware_parameters.end()) ? def : it->second;
-  };
-
-  device_ = getp("device", "/dev/ttyACM0");
-  baud_rate_ = std::stoi(getp("baud_rate", "57600"));
-  timeout_ms_ = std::stoi(getp("timeout_ms", "50"));
-  enc_counts_per_rev_ = std::stoi(getp("enc_counts_per_rev", "1123"));
-  reset_encoders_on_activate_ = (getp("reset_encoders_on_activate", "true") == "true");
-
-  pos_.assign(2, 0.0);
-  vel_.assign(2, 0.0);
-  prev_pos_.assign(2, 0.0);
-  cmd_vel_.assign(2, 0.0);
-
-  return hardware_interface::CallbackReturn::SUCCESS;
+    left_wheel_.name = info_.joints[0].name;
+    right_wheel_.name = info_.joints[1].name;
+    RCLCPP_INFO(get_logger(), left_wheel_.name.c_str());
+    RCLCPP_INFO(get_logger(), right_wheel_.name.c_str());
+    return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-std::vector<hardware_interface::StateInterface> DiffDriveArduinoHardware::export_state_interfaces()
-{
-  std::vector<hardware_interface::StateInterface> states;
-  states.reserve(4);
-  for (size_t i = 0; i < 2; ++i) {
-    states.emplace_back(joint_names_[i], hardware_interface::HW_IF_POSITION, &pos_[i]);
-    states.emplace_back(joint_names_[i], hardware_interface::HW_IF_VELOCITY, &vel_[i]);
-  }
-  return states;
+std::vector<hardware_interface::StateInterface>
+ChudovisheSystemHardware::export_state_interfaces() {
+    std::vector<hardware_interface::StateInterface> state_interfaces;
+
+    state_interfaces.emplace_back(hardware_interface::StateInterface(
+        left_wheel_.name, hardware_interface::HW_IF_POSITION,
+        &left_wheel_.position));
+    state_interfaces.emplace_back(hardware_interface::StateInterface(
+        left_wheel_.name, hardware_interface::HW_IF_VELOCITY,
+        &left_wheel_.velocity));
+
+    state_interfaces.emplace_back(hardware_interface::StateInterface(
+        right_wheel_.name, hardware_interface::HW_IF_POSITION,
+        &right_wheel_.position));
+    state_interfaces.emplace_back(hardware_interface::StateInterface(
+        right_wheel_.name, hardware_interface::HW_IF_VELOCITY,
+        &right_wheel_.velocity));
+
+    return state_interfaces;
 }
 
-std::vector<hardware_interface::CommandInterface> DiffDriveArduinoHardware::export_command_interfaces()
-{
-  std::vector<hardware_interface::CommandInterface> cmds;
-  cmds.reserve(2);
-  for (size_t i = 0; i < 2; ++i) {
-    cmds.emplace_back(joint_names_[i], hardware_interface::HW_IF_VELOCITY, &cmd_vel_[i]);
-  }
-  return cmds;
+std::vector<hardware_interface::CommandInterface>
+ChudovisheSystemHardware::export_command_interfaces() {
+    std::vector<hardware_interface::CommandInterface> command_interfaces;
+
+    command_interfaces.emplace_back(hardware_interface::CommandInterface(
+        left_wheel_.name, hardware_interface::HW_IF_VELOCITY,
+        &left_wheel_.command));
+    command_interfaces.emplace_back(hardware_interface::CommandInterface(
+        right_wheel_.name, hardware_interface::HW_IF_VELOCITY,
+        &right_wheel_.command));
+
+    return command_interfaces;
 }
 
-hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_configure(const rclcpp_lifecycle::State &)
-{
-  serial_ = std::make_unique<ArduinoComms>();
-  // if (!) {
-  //   return hardware_interface::CallbackReturn::ERROR;
-  // }
-  serial_->setup(device_, baud_rate_, timeout_ms_);
-  // optional reset
-  serial_->sendMsg("r\n");
-  prev_pos_.assign(2, 0.0);
-  pos_.assign(2, 0.0);
-  vel_.assign(2, 0.0);
+hardware_interface::CallbackReturn ChudovisheSystemHardware::on_configure(
+    const rclcpp_lifecycle::State& /*previous_state*/) {
+    RCLCPP_INFO(get_logger(), "Configuring ...please wait...");
 
-  RCLCPP_INFO(logger_, "Configured. Serial=%s @ %d", device_.c_str(), baud_rate_);
-  return hardware_interface::CallbackReturn::SUCCESS;
+    // reset values always when configuring hardware
+    for (const auto& [name, descr] : joint_state_interfaces_) {
+        set_state(name, 0.0);
+    }
+    for (const auto& [name, descr] : joint_command_interfaces_) {
+        set_command(name, 0.0);
+    }
+    RCLCPP_INFO(get_logger(), "Successfully configured!");
+
+    return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_cleanup(const rclcpp_lifecycle::State &)
-{
-  if (serial_) {
-    serial_.reset();
-  }
-  return hardware_interface::CallbackReturn::SUCCESS;
+hardware_interface::CallbackReturn ChudovisheSystemHardware::on_activate(
+    const rclcpp_lifecycle::State& /*previous_state*/) {
+    RCLCPP_INFO(get_logger(), "Activating ...please wait...");
+
+    // command and state should be equal when starting
+    for (const auto& [name, descr] : joint_command_interfaces_) {
+        set_command(name, get_state(name));
+    }
+
+    RCLCPP_INFO(get_logger(), "Successfully activated!");
+
+    return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_activate(const rclcpp_lifecycle::State &)
-{
-  cmd_vel_[0] = 0.0;
-  cmd_vel_[1] = 0.0;
-  write(rclcpp::Time(0), rclcpp::Duration(0, 0));
+hardware_interface::CallbackReturn ChudovisheSystemHardware::on_deactivate(
+    const rclcpp_lifecycle::State& /*previous_state*/) {
+    // BEGIN: This part here is for exemplary purposes - Please do not copy to
+    // your production code
+    RCLCPP_INFO(get_logger(), "Deactivating ...please wait...");
 
-  if (reset_encoders_on_activate_) {
-    serial_->sendMsg("r\n");
-    prev_pos_.assign(2, 0.0);
-    pos_.assign(2, 0.0);
-    vel_.assign(2, 0.0);
-  }
+    RCLCPP_INFO(get_logger(), "Successfully deactivated!");
 
-  RCLCPP_INFO(logger_, "Activated");
-  return hardware_interface::CallbackReturn::SUCCESS;
+    return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::CallbackReturn DiffDriveArduinoHardware::on_deactivate(const rclcpp_lifecycle::State &)
-{
-  cmd_vel_[0] = 0.0;
-  cmd_vel_[1] = 0.0;
-  write(rclcpp::Time(0), rclcpp::Duration(0, 0));
-  RCLCPP_INFO(logger_, "Deactivated");
-  return hardware_interface::CallbackReturn::SUCCESS;
+hardware_interface::return_type ChudovisheSystemHardware::read(
+    const rclcpp::Time& /*time*/, const rclcpp::Duration& /* period */) {
+    return hardware_interface::return_type::OK;
 }
 
-hardware_interface::return_type DiffDriveArduinoHardware::read(
-  const rclcpp::Time &, const rclcpp::Duration & period)
-{
-
-  int left_counts = 0, right_counts = 0;
-  serial_->readEncoderValues(left_counts, right_counts);
-
-  const double rad_per_count = TWO_PI / static_cast<double>(enc_counts_per_rev_);
-  pos_[0] = static_cast<double>(left_counts) * rad_per_count;
-  pos_[1] = static_cast<double>(right_counts) * rad_per_count;
-
-  const double dt = period.seconds();
-  if (dt > 0.0) {
-    vel_[0] = (pos_[0] - prev_pos_[0]) / dt;
-    vel_[1] = (pos_[1] - prev_pos_[1]) / dt;
-  } else {
-    vel_[0] = vel_[1] = 0.0;
-  }
-
-  prev_pos_ = pos_;
-  return hardware_interface::return_type::OK;
-}
-
-
-hardware_interface::return_type DiffDriveArduinoHardware::write(const rclcpp::Time &, const rclcpp::Duration &)
-{
-  auto safe = [&](double v) { return std::isfinite(v) ? v : 0.0; };
-
-  const double left_rad_s  = safe(cmd_vel_[0]);
-  const double right_rad_s = safe(cmd_vel_[1]);
-
-  // firmware expects ticks/sec for 'm' :contentReference[oaicite:4]{index=4}
-  const double ticks_per_rad = static_cast<double>(enc_counts_per_rev_) / TWO_PI;
-  const long left_ticks_s  = lround(left_rad_s * ticks_per_rad);
-  const long right_ticks_s = lround(right_rad_s * ticks_per_rad);
-
-  serial_->setMotorValues(left_ticks_s, right_ticks_s);
-
-  return hardware_interface::return_type::OK;
+hardware_interface::return_type
+chudovishe_hardware::ChudovisheSystemHardware::write(
+    const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/) {
+    return hardware_interface::return_type::OK;
 }
 
 }  // namespace chudovishe_hardware
 
-PLUGINLIB_EXPORT_CLASS(chudovishe_hardware::DiffDriveArduinoHardware, hardware_interface::SystemInterface)
+#include "pluginlib/class_list_macros.hpp"
+PLUGINLIB_EXPORT_CLASS(chudovishe_hardware::ChudovisheSystemHardware,
+                       hardware_interface::SystemInterface)

@@ -12,13 +12,9 @@ find_package(rclcpp_lifecycle REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(serial REQUIRED)
-if (serial_FOUND)
-  message("Serial found")
-endif()
 
 add_library(${PROJECT_NAME} SHARED
   src/chudovishe_hardware.cpp 
-  src/arduino_comms.cpp
 )
 
 
