@@ -8,6 +8,8 @@
 #include <memory>
 #include <sstream>
 #include <vector>
+#include <algorithm>
+#include <cstdint>
 
 #include "hardware_interface/lexical_casts.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
@@ -138,8 +140,17 @@ hardware_interface::CallbackReturn ChudovisheSystemHardware::on_activate(
     }
 
     try {
-        serial::Serial serial_ = serial::Serial(
-            port_name_, baudrate_, serial::Timeout::simpleTimeout(timeout_ms_));
+        // Configure the pre-constructed serial_ instance to avoid using the
+        // disabled copy-assignment operator.
+        serial_.setPort(port_name_);
+        serial_.setBaudrate(static_cast<uint32_t>(baudrate_));
+        serial::Timeout to = serial::Timeout::simpleTimeout(static_cast<uint32_t>(timeout_ms_));
+        serial_.setTimeout(to);
+        serial_.open();
+        if (!serial_.isOpen()) {
+            RCLCPP_ERROR(logger_, "Serial port %s did not open", port_name_.c_str());
+            return hardware_interface::CallbackReturn::ERROR;
+        }
     } catch (const std::exception& e) {
         RCLCPP_ERROR(logger_, "Failed to open serial port %s: %s",
                      port_name_.c_str(), e.what());
