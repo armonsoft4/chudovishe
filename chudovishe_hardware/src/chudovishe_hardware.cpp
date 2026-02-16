@@ -1,15 +1,15 @@
 #include "chudovishe_hardware/chudovishe_hardware.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <iomanip>
 #include <limits>
 #include <memory>
 #include <sstream>
 #include <vector>
-#include <algorithm>
-#include <cstdint>
 
 #include "hardware_interface/lexical_casts.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
@@ -144,11 +144,12 @@ hardware_interface::CallbackReturn ChudovisheSystemHardware::on_activate(
         // disabled copy-assignment operator.
         serial_.setPort(port_name_);
         serial_.setBaudrate(static_cast<uint32_t>(baudrate_));
-        serial::Timeout to = serial::Timeout::simpleTimeout(static_cast<uint32_t>(timeout_ms_));
+        serial::Timeout to = serial::Timeout::simpleTimeout(timeout_ms_);
         serial_.setTimeout(to);
         serial_.open();
         if (!serial_.isOpen()) {
-            RCLCPP_ERROR(logger_, "Serial port %s did not open", port_name_.c_str());
+            RCLCPP_ERROR(logger_, "Serial port %s did not open",
+                         port_name_.c_str());
             return hardware_interface::CallbackReturn::ERROR;
         }
     } catch (const std::exception& e) {
@@ -181,6 +182,42 @@ hardware_interface::CallbackReturn ChudovisheSystemHardware::on_deactivate(
 
 hardware_interface::return_type ChudovisheSystemHardware::read(
     const rclcpp::Time& /*time*/, const rclcpp::Duration& /* period */) {
+    static uint8_t read_buf_raw[256]{};
+
+    static uint16_t head_frame = 0;
+    static uint16_t msg_counter = 0;
+    static uint8_t msg_command = 0;
+
+    char prev_byte = 0;
+    char* p{};
+    size_t bytes_transferred = serial_.read(read_buf_raw, sizeof(read_buf_raw));
+    
+    for (unsigned int i = 0; i < bytes_transferred; ++i) {
+        head_frame = ((uint16_t)(read_buf_raw[i]) << 8) | (uint8_t)prev_byte;
+        
+        if (head_frame == HEAD_FRAME) {
+            RCLCPP_INFO(logger_, "head_frame = 0x%X", head_frame);
+            p = (char*)&motorWheelFeedback;
+            *p++ = prev_byte;
+            *p++ = read_buf_raw[i];
+            msg_counter = 2;
+        } else if (msg_counter >= 2 &&
+                   msg_counter < sizeof(MotorWheelFeedback)) {
+            *p++ = read_buf_raw[i];
+            msg_counter++;
+        }
+
+        if (msg_counter == sizeof(MotorWheelFeedback)) {
+            msg_counter = 0;
+        }
+
+        prev_byte = read_buf_raw[i];
+    }
+
+    RCLCPP_INFO(logger_, "Received data: header=0x%X, leftMotorTicks=%d, rightMotorTicks=%d, checksum=0x%X",
+                motorWheelFeedback.header, motorWheelFeedback.leftMotorTicks,
+                motorWheelFeedback.rightMotorTicks, motorWheelFeedback.checksum);
+
     return hardware_interface::return_type::OK;
 }
 

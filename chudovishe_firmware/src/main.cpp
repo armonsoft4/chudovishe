@@ -12,10 +12,21 @@
 #define R_ENC_A 3
 #define R_ENC_B 11
 
-volatile long l_count = 0;
-volatile long r_count = 0;
+volatile int l_count = 1240;
+volatile int r_count = 3567;
 
-long l, r = 0;
+int l, r = 0;
+
+#define HEAD_FRAME 0xABCD
+
+typedef struct {
+    uint16_t header;
+    int16_t  leftMotorTicks;
+    int16_t  rightMotorTicks;
+    uint16_t checksum;
+} MotorWheelFeedback;
+
+MotorWheelFeedback feedback;
 
 void onLeftAChange() {
   bool b = digitalRead(L_ENC_B);
@@ -85,10 +96,10 @@ void loop() {
     l = l_count;
     r = r_count;
     interrupts();
-    uint8_t l_byte = (uint8_t)(l & 0xFF);
-    uint8_t r_byte = (uint8_t)(r & 0xFF);
-    uint8_t ck = (uint8_t)((l_byte + r_byte) & 0xFF);
-    uint8_t out[3] = { l_byte, r_byte, ck };
-    Serial.write(out, 3);
+    feedback.header = HEAD_FRAME;
+    feedback.leftMotorTicks = (int16_t)l;
+    feedback.rightMotorTicks = (int16_t)r;
+    feedback.checksum = (uint16_t)(feedback.header ^ feedback.leftMotorTicks ^ feedback.rightMotorTicks);
+    Serial.write((byte*)&feedback, sizeof(feedback));
   }
 }
