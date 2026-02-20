@@ -142,12 +142,7 @@ hardware_interface::CallbackReturn ChudovisheSystemHardware::on_activate(
     try {
         // Configure the pre-constructed serial_ instance to avoid using the
         // disabled copy-assignment operator.
-        serial_.setPort(port_name_);
-        serial_.setBaudrate(static_cast<uint32_t>(baudrate_));
-        serial::Timeout to = serial::Timeout::simpleTimeout(timeout_ms_);
-        serial_.setTimeout(to);
-        serial_.open();
-        if (!serial_.isOpen()) {
+        if (!serialPortService.connect(port_name_, baudrate_, timeout_ms_)) {
             RCLCPP_ERROR(logger_, "Serial port %s did not open",
                          port_name_.c_str());
             return hardware_interface::CallbackReturn::ERROR;
@@ -168,7 +163,7 @@ hardware_interface::CallbackReturn ChudovisheSystemHardware::on_deactivate(
     RCLCPP_INFO(logger_, "Deactivating ...please wait...");
 
     try {
-        serial_.close();
+        serialPortService.disconnect();
     } catch (const std::exception& e) {
         RCLCPP_ERROR(logger_, "Failed to close serial port %s: %s",
                      port_name_.c_str(), e.what());
@@ -182,41 +177,7 @@ hardware_interface::CallbackReturn ChudovisheSystemHardware::on_deactivate(
 
 hardware_interface::return_type ChudovisheSystemHardware::read(
     const rclcpp::Time& /*time*/, const rclcpp::Duration& /* period */) {
-    static uint8_t read_buf_raw[256]{};
-
-    static uint16_t head_frame = 0;
-    static uint16_t msg_counter = 0;
-    static uint8_t msg_command = 0;
-
-    char prev_byte = 0;
-    char* p{};
-    size_t bytes_transferred = serial_.read(read_buf_raw, sizeof(read_buf_raw));
-    
-    for (unsigned int i = 0; i < bytes_transferred; ++i) {
-        head_frame = ((uint16_t)(read_buf_raw[i]) << 8) | (uint8_t)prev_byte;
-        
-        if (head_frame == HEAD_FRAME) {
-            RCLCPP_INFO(logger_, "head_frame = 0x%X", head_frame);
-            p = (char*)&motorWheelFeedback;
-            *p++ = prev_byte;
-            *p++ = read_buf_raw[i];
-            msg_counter = 2;
-        } else if (msg_counter >= 2 &&
-                   msg_counter < sizeof(MotorWheelFeedback)) {
-            *p++ = read_buf_raw[i];
-            msg_counter++;
-        }
-
-        if (msg_counter == sizeof(MotorWheelFeedback)) {
-            msg_counter = 0;
-        }
-
-        prev_byte = read_buf_raw[i];
-    }
-
-    RCLCPP_INFO(logger_, "Received data: header=0x%X, leftMotorTicks=%d, rightMotorTicks=%d, checksum=0x%X",
-                motorWheelFeedback.header, motorWheelFeedback.leftMotorTicks,
-                motorWheelFeedback.rightMotorTicks, motorWheelFeedback.checksum);
+    serialPortService.read();
 
     return hardware_interface::return_type::OK;
 }
@@ -224,6 +185,16 @@ hardware_interface::return_type ChudovisheSystemHardware::read(
 hardware_interface::return_type
 chudovishe_hardware::ChudovisheSystemHardware::write(
     const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/) {
+
+    MotorWheelDriveControl motorWheelDriveControl;
+    
+    motorWheelDriveControl.header = HEAD_FRAME;
+    motorWheelDriveControl.leftMotorPWM = (int16_t)left_wheel_.command;
+    motorWheelDriveControl.rightMotorPWM = (int16_t)right_wheel_.command;
+
+    motorWheelDriveControl.checksum = (uint16_t)(motorWheelDriveControl.header ^ motorWheelDriveControl.leftMotorPWM ^ motorWheelDriveControl.rightMotorPWM);
+    serialPortService.write((const char*)&motorWheelDriveControl, sizeof(MotorWheelDriveControl));
+    
     return hardware_interface::return_type::OK;
 }
 

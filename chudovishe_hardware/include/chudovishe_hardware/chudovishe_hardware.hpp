@@ -16,9 +16,8 @@
 #include "rclcpp/time.hpp"
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
 #include "rclcpp_lifecycle/state.hpp"
-#include <serial/serial.h>
 
-#include "chudovishe_hardware/serial_protocol.hpp"
+#include "chudovishe_hardware/serial_port_service.hpp"
 #include "chudovishe_hardware/wheel.hpp"
 
 namespace chudovishe_hardware {
@@ -55,13 +54,10 @@ class ChudovisheSystemHardware : public hardware_interface::SystemInterface {
     int baudrate_;
     int timeout_ms_;
 
-    MotorWheelFeedback motorWheelFeedback {};
+    SerialPortService serialPortService;
 
     MotorWheel left_wheel_;
     MotorWheel right_wheel_;
-
-    serial::Serial serial_;
-
 
     rclcpp::Logger logger_ = rclcpp::get_logger("chudovishe_system_hardware");
 };
